@@ -2,7 +2,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h>
 #include <unistd.h>
 #include <string.h>
 #include <iostream>
@@ -11,6 +10,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#ifdef __wasi__
+#include <wasi_socket_ext.h>
+#endif
 // Custom print error function
 #define perror2(s, e) fprintf(stderr, "%s: %s\n", s, strerror(e))
 
@@ -49,7 +51,6 @@ int main(int argc , char* argv []){
 
     struct sockaddr_in servadd; // structure for handling internet addresses
     int PORTNUM;    // port number
-    struct hostent* hp; // hostent structure pointer to receive returned info from gethostbyaddr
     int sock, n_read;
     char dirname[4096];
     memset(&dirname[0], 0, sizeof(dirname));
@@ -86,12 +87,8 @@ int main(int argc , char* argv []){
     // lookup server’s address and connect there
     struct in_addr myaddress ;
     inet_aton(ip, &myaddress);
-    if ((hp = gethostbyaddr((const char*)&myaddress, sizeof(myaddress), AF_INET)) == NULL){
-        herror("gethostbyname");
-        exit(1);
-    }
 
-    memcpy(&servadd.sin_addr, hp->h_addr, hp->h_length);    // copy address taken from gethostbyaddr to servadd
+    servadd.sin_addr.s_addr = htonl(INADDR_ANY);
     servadd.sin_port = htons(PORTNUM);  // covnert port to network byte order
     servadd.sin_family = AF_INET;   // we will use Internet Protocol v4 addresses
 

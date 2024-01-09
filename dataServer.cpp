@@ -6,7 +6,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h>
 #include <time.h>
 #include <dirent.h>
 #include <iostream>
@@ -14,6 +13,10 @@
 #include <pthread.h>
 #include <deque>
 #include <map>
+
+#ifdef __wasi__
+#include <wasi_socket_ext.h>
+#endif
 
 // Custom print error function
 #define perror2(s, e) fprintf(stderr, "%s: %s\n", s, strerror(e))
@@ -162,7 +165,7 @@ void* communication_thread(void* arg){
         exit(1);
     }
 
-    pthread_exit(NULL);
+    exit(0);
 }
 
 // code for worker threads
@@ -235,7 +238,7 @@ void* worker_thread(void* arg){
         exit(1);
     }
 
-    pthread_exit(NULL);
+    exit(0);
 }
 
 int main(int argc, char* argv[]){
@@ -297,8 +300,7 @@ int main(int argc, char* argv[]){
     myaddr.sin_port = htons(port);  // covnert port to network byte order
     myaddr.sin_family = AF_INET;    // we will use Internet Protocol v4 addresses
 
-    if (bind(lsock, (struct sockaddr*)&myaddr, sizeof(myaddr))) // bind address in myaddr to listening socket
-        perror_exit("bind");
+    bind(lsock, (struct sockaddr*)&myaddr, sizeof(myaddr));
 
     // mark as passive socket (will be used to accept incoming connection requests using accept())
     // arbitary queue size = 5
