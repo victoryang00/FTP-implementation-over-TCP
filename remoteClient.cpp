@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <string>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -17,6 +18,32 @@
 #define perror2(s, e) fprintf(stderr, "%s: %s\n", s, strerror(e))
 
 using namespace std;
+static uint32_t my_inet_addr(const char *ip) {
+    uint32_t result = 0;
+    unsigned int part;
+    const char *start;
+
+    start = ip;
+    for (int i = 0; i < 4; i++) {
+        char c;
+        part = 0;
+        while ((c = *start++) != '\0') {
+            if (c == '.') {
+                break;
+            }
+            if (c < '0' || c > '9') {
+                return -1; // Invalid character encountered
+            }
+            part = part * 10 + (c - '0');
+        }
+        if (part > 255) {
+            return -1; // Single part is larger than 255
+        }
+        result = result | (part << (i * 8));
+    }
+
+    return result;
+}
 
 // Custom print error function
 void perror_exit(string message){
@@ -24,15 +51,6 @@ void perror_exit(string message){
     exit(EXIT_FAILURE);
 }
 
-// Custom function to write up to size bytes of buffer buff to a file descriptor fd
-int write_all(int fd, const void* buff, size_t size){
-    int sent, n;
-    for (sent = 0; sent < size; sent += n){
-        if ((n = write(fd, (char*)buff + sent, size - sent)) == -1)
-            return -1; /* error */
-    }
-    return sent;
-}
 
 // Count occurences of char c in char* string
 int count_characters(char* string, char c){
@@ -78,17 +96,11 @@ int main(int argc , char* argv []){
     // create socket through internet
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
         perror_exit("socket");
-
-    // set socket options (we want the socket to be reusable itself)
-    int enable = 1;
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-        perror("setsockopt(SO_REUSEADDR) failed");
     
     // lookup server’s address and connect there
-    struct in_addr myaddress ;
-    inet_aton(ip, &myaddress);
 
-    servadd.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    servadd.sin_addr.s_addr = my_inet_addr(ip);
     servadd.sin_port = htons(PORTNUM);  // covnert port to network byte order
     servadd.sin_family = AF_INET;   // we will use Internet Protocol v4 addresses
 
@@ -97,9 +109,9 @@ int main(int argc , char* argv []){
         perror_exit("connect");
 
     // send desired directory name to the server and end with '\n'
-    if (write_all(sock, dirname, strlen(dirname)) == -1)
-        perror_exit("write");
-    if (write_all(sock, "\n", 1) == -1)
+    printf("Sending directory name: %s\n", dirname);
+    sprintf(dirname, "%s\n", dirname);
+    if (send(sock, dirname, strlen(dirname),0) == -1)
         perror_exit("write");
     
     // initialize a buffer of size 2
@@ -116,7 +128,7 @@ int main(int argc , char* argv []){
     int count = 0;  // how many '~' we have found so far
     int file_characters;    // characters contained in the file
 
-    while ((n_read = read(sock, buffer, 1)) > 0){   // read 1 byte at a time
+    while ((n_read = recv(sock, buffer, 1, 0)) > 0){   // read 1 byte at a time
         if (n_read > 0 && (buffer[0] != '\0')){ // if we have read something valid
             buffer[1] = '\0';   // terminate the buffer
             strcpy(path_and_metadata+size, buffer); // copy the content to the appropriate position within the path_and_metadata array
@@ -155,7 +167,7 @@ int main(int argc , char* argv []){
 
                 int characters_written = 0; // characters written to file so far
 
-                while ((n_read = read(sock, buffer, 1)) > 0){   // continue reading from socket
+                while ((n_read = recv(sock, buffer, 1,0)) > 0){   // continue reading from socket
                     if (n_read > 0 && (buffer[0] != '\0')){ // terminate buffer with '/0'
                         buffer[1] = '\0';
                         if (write(fd, buffer, n_read) < n_read) // write to file
@@ -165,10 +177,7 @@ int main(int argc , char* argv []){
                             break;
                     }
                 }
-                if (fclose(fp) != 0){
-                    perror2("close file", errno);
-                }
-
+                fclose(fp) ;
                 // reset
                 memset(&path_and_metadata[0], 0, sizeof(path_and_metadata));
                 count = 0;
